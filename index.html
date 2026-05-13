@@ -642,8 +642,7 @@
   </div>
 </footer>
 
-<script>
-const ROADMAP = {
+<script type="module">
   phase0: {
     num: "00",
     title: "Foundation Week",
@@ -1342,17 +1341,38 @@ const LEVELS = [
   { min: 4000, max: 99999, name: "THREAT ACTOR" }
 ];
 
-let state = loadState();
+let state = { tasks: {}, weeks: {}, comp: {} };
+let dbReady = false;
 
-function loadState() {
+// Firebase setup
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+const firebaseConfig = {
+  apiKey: "AIzaSyC6GEvz3VK2RKpC3EXqXxRPSrk-G6e5sZw",
+  authDomain: "roadmap-sync-5fc1f.firebaseapp.com",
+  projectId: "roadmap-sync-5fc1f",
+  storageBucket: "roadmap-sync-5fc1f.firebasestorage.app",
+  messagingSenderId: "834903662109",
+  appId: "1:834903662109:web:1b1cc3cc8ae8c852a1b0f4"
+};
+const _app = initializeApp(firebaseConfig);
+const _db = getFirestore(_app);
+const DOC_REF = doc(_db, "progress", "cyber_roadmap");
+
+async function loadState() {
   try {
-    const s = localStorage.getItem('cyberpath_v2');
-    return s ? JSON.parse(s) : { tasks: {}, weeks: {}, comp: {} };
-  } catch(e) { return { tasks: {}, weeks: {}, comp: {} }; }
+    const snap = await getDoc(DOC_REF);
+    return snap.exists() ? snap.data() : { tasks: {}, weeks: {}, comp: {} };
+  } catch(e) {
+    console.error('Load failed:', e);
+    return { tasks: {}, weeks: {}, comp: {} };
+  }
 }
 
-function saveState() {
-  localStorage.setItem('cyberpath_v2', JSON.stringify(state));
+async function saveState() {
+  try {
+    await setDoc(DOC_REF, state);
+  } catch(e) { console.error('Save failed:', e); }
 }
 
 function getTotalXP() {
@@ -1606,8 +1626,11 @@ function renderAll() {
   });
 }
 
-renderAll();
-updateHeader();
+loadState().then(loaded => {
+  state = loaded;
+  renderAll();
+  updateHeader();
+});
 </script>
 </body>
 </html>
