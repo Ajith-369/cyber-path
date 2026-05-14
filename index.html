@@ -586,7 +586,7 @@
         <div class="stat"><span class="stat-val" id="tasksCount">0</span><span class="stat-label">TASKS</span></div>
         <div class="stat"><span class="stat-val" id="weeksCount">0</span><span class="stat-label">WEEKS</span></div>
       </div>
-      <button class="reset-btn" onclick="confirmReset()">RESET</button>
+      <button class="reset-btn" id="resetBtn">RESET</button>
     </div>
   </div>
 </header>
@@ -611,13 +611,13 @@
 
   <!-- PHASE NAV -->
   <div class="phase-nav" id="phaseNav">
-    <button class="phase-btn active" onclick="showPhase('phase0')">WEEK 0 — FOUNDATION</button>
-    <button class="phase-btn" onclick="showPhase('phase1')">MONTH 1 — BREAK THINGS</button>
-    <button class="phase-btn" onclick="showPhase('phase2')">MONTH 2 — BUILD TOOLS</button>
-    <button class="phase-btn" onclick="showPhase('phase3')">MONTH 3 — DEFEND</button>
-    <button class="phase-btn" onclick="showPhase('phase4')">MONTH 4 — AUTOMATE</button>
-    <button class="phase-btn" onclick="showPhase('phase5')">MONTH 5 — HUNT BUGS</button>
-    <button class="phase-btn" onclick="showPhase('phase6')">MONTH 6 — GET HIRED</button>
+    <button class="phase-btn active" data-phase="phase0">WEEK 0 — FOUNDATION</button>
+    <button class="phase-btn" data-phase="phase1">MONTH 1 — BREAK THINGS</button>
+    <button class="phase-btn" data-phase="phase2">MONTH 2 — BUILD TOOLS</button>
+    <button class="phase-btn" data-phase="phase3">MONTH 3 — DEFEND</button>
+    <button class="phase-btn" data-phase="phase4">MONTH 4 — AUTOMATE</button>
+    <button class="phase-btn" data-phase="phase5">MONTH 5 — HUNT BUGS</button>
+    <button class="phase-btn" data-phase="phase6">MONTH 6 — GET HIRED</button>
   </div>
 
   <!-- PHASES -->
@@ -643,6 +643,20 @@
 </footer>
 
 <script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
+import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
+const firebaseConfig = {
+  apiKey: "AIzaSyC6GEvz3VK2RKpC3EXqXxRPSrk-G6e5sZw",
+  authDomain: "roadmap-sync-5fc1f.firebaseapp.com",
+  projectId: "roadmap-sync-5fc1f",
+  storageBucket: "roadmap-sync-5fc1f.firebasestorage.app",
+  messagingSenderId: "834903662109",
+  appId: "1:834903662109:web:1b1cc3cc8ae8c852a1b0f4"
+};
+const _app = initializeApp(firebaseConfig);
+const _db = getFirestore(_app);
+const DOC_REF = doc(_db, "progress", "cyber_roadmap");
+const ROADMAP = {
   phase0: {
     num: "00",
     title: "Foundation Week",
@@ -1342,37 +1356,45 @@ const LEVELS = [
 ];
 
 let state = { tasks: {}, weeks: {}, comp: {} };
-let dbReady = false;
+let saveTimer = null;
 
-// Firebase setup
-import { initializeApp } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js";
-import { getFirestore, doc, setDoc, getDoc } from "https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js";
-const firebaseConfig = {
-  apiKey: "AIzaSyC6GEvz3VK2RKpC3EXqXxRPSrk-G6e5sZw",
-  authDomain: "roadmap-sync-5fc1f.firebaseapp.com",
-  projectId: "roadmap-sync-5fc1f",
-  storageBucket: "roadmap-sync-5fc1f.firebasestorage.app",
-  messagingSenderId: "834903662109",
-  appId: "1:834903662109:web:1b1cc3cc8ae8c852a1b0f4"
-};
-const _app = initializeApp(firebaseConfig);
-const _db = getFirestore(_app);
-const DOC_REF = doc(_db, "progress", "cyber_roadmap");
-
-async function loadState() {
+async function loadFromFirebase() {
   try {
+    setSyncStatus('syncing');
     const snap = await getDoc(DOC_REF);
-    return snap.exists() ? snap.data() : { tasks: {}, weeks: {}, comp: {} };
+    const data = snap.exists() ? snap.data() : { tasks: {}, weeks: {}, comp: {} };
+    if (!data.tasks) data.tasks = {};
+    if (!data.comp) data.comp = {};
+    setSyncStatus('saved');
+    return data;
   } catch(e) {
     console.error('Load failed:', e);
+    setSyncStatus('error');
     return { tasks: {}, weeks: {}, comp: {} };
   }
 }
 
-async function saveState() {
+async function saveToFirebase() {
   try {
-    await setDoc(DOC_REF, state);
-  } catch(e) { console.error('Save failed:', e); }
+    setSyncStatus('syncing');
+    await setDoc(DOC_REF, { tasks: state.tasks, comp: state.comp });
+    setSyncStatus('saved');
+  } catch(e) {
+    console.error('Save failed:', e);
+    setSyncStatus('error');
+  }
+}
+
+function saveState() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(saveToFirebase, 800);
+}
+
+function setSyncStatus(s) {
+  const el = document.getElementById('syncStatus');
+  if (!el) return;
+  el.textContent = s === 'syncing' ? '⟳ SYNCING' : s === 'saved' ? '✓ SYNCED' : '✗ ERROR';
+  el.style.color = s === 'saved' ? 'var(--accent)' : s === 'error' ? 'var(--accent3)' : 'var(--text2)';
 }
 
 function getTotalXP() {
@@ -1539,7 +1561,7 @@ function renderAll() {
 
       html += `
         <div class="week-card ${allDone ? 'completed' : ''} ${isOpen ? 'open' : ''}" id="card_${week.id}">
-          <div class="week-head" onclick="toggleWeekOpen('${week.id}')">
+          <div class="week-head" data-action="weekopen" data-weekid="${week.id}">
             <span class="week-num">WEEK ${wIdx + 1}</span>
             <span class="week-title" style="color:${allDone ? 'var(--accent)' : 'var(--text)'}">${week.title}</span>
             <div style="display:flex;align-items:center;gap:10px;margin-left:auto">
@@ -1548,7 +1570,7 @@ function renderAll() {
               </div>
               <span class="week-xp">${tasksDone}/${week.tasks.length} · ${week.xp}XP</span>
             </div>
-            <div class="week-check ${allDone ? 'done' : ''}" onclick="event.stopPropagation(); toggleWeekComplete('${week.id}')" title="Mark complete">${allDone ? '✓' : ''}</div>
+            <div class="week-check ${allDone ? 'done' : ''}" data-action="weekdone" data-weekid="${week.id}" title="Mark complete">${allDone ? '✓' : ''}</div>
             <span class="week-expand">▼</span>
           </div>
           <div class="week-body">
@@ -1574,7 +1596,7 @@ function renderAll() {
       week.tasks.forEach((task, i) => {
         const done = state.tasks[week.id + '_' + i];
         html += `
-          <div class="task-item ${done ? 'done' : ''}" onclick="toggleTask('${week.id}', ${i})">
+          <div class="task-item ${done ? 'done' : ''}" data-action="task" data-weekid="${week.id}" data-idx="${i}">
             <div class="task-cb">${done ? '✓' : ''}</div>
             <span class="task-text">${task.text}</span>
             <span class="task-type ${task.type}">${task.type.toUpperCase()}</span>
@@ -1605,7 +1627,7 @@ function renderAll() {
       html += `<div class="competency"><div class="comp-title">END OF PHASE COMPETENCY CHECK</div>`;
       phase.competency.forEach((c, i) => {
         const done = state.comp[phaseId + '_comp_' + i];
-        html += `<div class="comp-item ${done ? 'done' : ''}" onclick="toggleComp('${phaseId}', ${i})"><div class="comp-dot"></div><span>${c}</span></div>`;
+        html += `<div class="comp-item ${done ? 'done' : ''}" data-action="comp" data-phaseid="${phaseId}" data-idx="${i}"><div class="comp-dot"></div><span>${c}</span></div>`;
       });
       html += `</div>`;
     }
@@ -1613,7 +1635,6 @@ function renderAll() {
     el.innerHTML = html;
   });
 
-  // Update phase nav completion indicators
   const btns = document.querySelectorAll('.phase-btn');
   Object.entries(ROADMAP).forEach(([phaseId, phase], idx) => {
     let total = 0, done = 0;
@@ -1626,7 +1647,27 @@ function renderAll() {
   });
 }
 
-loadState().then(loaded => {
+// Event delegation
+document.addEventListener('click', e => {
+  const weekDone = e.target.closest('[data-action="weekdone"]');
+  if (weekDone) { e.stopPropagation(); toggleWeekComplete(weekDone.dataset.weekid); return; }
+
+  const weekOpen = e.target.closest('[data-action="weekopen"]');
+  if (weekOpen) { toggleWeekOpen(weekOpen.dataset.weekid); return; }
+
+  const task = e.target.closest('[data-action="task"]');
+  if (task) { toggleTask(task.dataset.weekid, +task.dataset.idx); return; }
+
+  const comp = e.target.closest('[data-action="comp"]');
+  if (comp) { toggleComp(comp.dataset.phaseid, +comp.dataset.idx); return; }
+
+  const phase = e.target.closest('[data-phase]');
+  if (phase) { showPhase(phase.dataset.phase); return; }
+
+  if (e.target.closest('#resetBtn')) { confirmReset(); return; }
+});
+
+loadFromFirebase().then(loaded => {
   state = loaded;
   renderAll();
   updateHeader();
